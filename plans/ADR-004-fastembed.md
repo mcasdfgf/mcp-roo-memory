@@ -45,10 +45,9 @@ Use `sentence-transformers` library with local models.
 
 ### Option C: fastembed (selected)
 
-Use `fastembed` library from Qdrant team, built into `qdrant-client`.
+Use `fastembed` library from Qdrant team, works alongside `qdrant-client`.
 
 **Pros**:
-- Built into qdrant-client — no extra dependency
 - Lightweight (ONNX runtime, not PyTorch)
 - Fast on CPU
 - Multilingual models available
@@ -65,11 +64,12 @@ Use `fastembed` with `paraphrase-multilingual-MiniLM-L12-v2` model (384 dimensio
 
 ### Rationale
 
-1. **Zero extra dependency** — fastembed is bundled with qdrant-client
+1. **Lightweight** — ONNX runtime is much lighter than PyTorch
 2. **Multilingual** — supports both English and Russian (critical for this project)
-3. **Lightweight** — ONNX runtime is much lighter than PyTorch
+3. **Efficient** — ONNX runtime is much lighter than PyTorch
 4. **384 dimensions** — good balance of quality and performance
 5. **CPU-friendly** — runs well on CPU, no GPU needed
+6. **Separate but compatible** — fastembed is an optional companion to qdrant-client (listed as a separate dependency in `pyproject.toml`)
 
 ### Implementation
 

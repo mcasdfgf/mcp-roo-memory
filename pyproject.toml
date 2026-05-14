@@ -11,7 +11,7 @@ license = {text = "MIT"}
 authors = [
     {name = "mcp-roo-memory contributors"},
 ]
-urls = {Homepage = "https://github.com/your-org/mcp-roo-memory", Source = "https://github.com/your-org/mcp-roo-memory", BugTracker = "https://github.com/your-org/mcp-roo-memory/issues"}
+urls = {Homepage = "https://github.com/mcasdfgf/mcp-roo-memory", Source = "https://github.com/mcasdfgf/mcp-roo-memory", BugTracker = "https://github.com/mcasdfgf/mcp-roo-memory/issues"}
 dependencies = [
     "mcp>=1.0.0",
     "qdrant-client>=1.9.0",

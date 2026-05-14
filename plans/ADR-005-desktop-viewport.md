@@ -38,8 +38,8 @@ The graph remains complete in SQLite, but Roo only sees the viewport:
 
 Desktop Manager implements lazy loading with three tiers:
 
-1. **Hot nodes**: determined by `navigation_history` (last N focuses)
-   and by relations (direct connections of current focus). Always in `desktop_open` response.
+1. **Hot nodes**: determined by `navigation_history` (last N focuses — actions `focus` and `branch`).
+   Always in `desktop_open` response. Relations are **not** auto-expanded — use `desktop_focus(node_id)` to expand a node's subgraph.
 
 2. **Cold nodes**: all other session nodes with `active` status.
    Only titles returned (id, type, title) without full text.

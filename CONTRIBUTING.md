@@ -5,7 +5,7 @@ Thanks for your interest! This is a small project that aims to solve a big probl
 ## Quick Start
 
 ```bash
-git clone https://github.com/your-org/mcp-roo-memory.git
+git clone https://github.com/mcasdfgf/mcp-roo-memory.git
 cd mcp-roo-memory
 python -m venv .venv
 source .venv/bin/activate
@@ -31,7 +31,7 @@ Key components:
 | Component | File | Responsibility |
 |-----------|------|---------------|
 | Core factory | [`src/cortex/__init__.py`](src/cortex/__init__.py) | Assembles all managers |
-| MCP server | [`src/cortex/server.py`](src/cortex/server.py) | 17 tools, 4 resources |
+| MCP server | [`src/cortex/server.py`](src/cortex/server.py) | 15 tools, 4 resources |
 | Graph | [`src/cortex/graph.py`](src/cortex/graph.py) | CRUD, traversal, mutation |
 | Database | [`src/cortex/db.py`](src/cortex/db.py) | SQLite operations |
 | Vector | [`src/cortex/vector.py`](src/cortex/vector.py) | Qdrant + fastembed |

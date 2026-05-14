@@ -163,7 +163,7 @@ MCP config:
                         │ stdio (MCP protocol)
 ┌──────────────────────▼───────────────────────┐
 │               CortexServer                     │
-│         17 tools · 4 resources                 │
+│         15 tools · 4 resources                 │
 ├──────────┬──────────┬──────────┬─────────────┤
 │ Graph    │ Vector   │ Desktop  │ Database    │
 │ CRUD,    │ Qdrant + │ Hot/     │ SQLite      │
@@ -214,14 +214,20 @@ For deep understanding of the memory model, see [`CONCEPT.md`](CONCEPT.md).
 |------|-------------|
 | `desktop_open` | Open/restore a workspace session |
 | `desktop_focus` | Bring a node into hot context |
+| `desktop_history` | Get navigation history for a workspace |
 | `graph_add_node` | Store any knowledge: entity, fact, decision, task... |
 | `graph_get_node` | Retrieve a node with its relations |
+| `graph_add_relation` | Create a relation between two nodes |
 | `graph_traverse` | Walk the graph from a starting node |
+| `graph_walk` | Walk along a reasoning chain |
 | `graph_decompose` | Break a task into structured subtasks |
+| `graph_update_node` | Update a node's data in-place |
 | `graph_supersede` | Replace outdated knowledge (keeps history) |
+| `graph_delete_node` | Delete a node and its vector |
 | `vector_search` | Find things by meaning, across 50+ languages |
-| `graph_search` | Hybrid: semantic + graph filters |
-| *(and 8 more)* | See full list in [`CONCEPT.md §7`](CONCEPT.md#7-mcp-protocol) |
+| `vector_store` | Store text with automatic vectorization |
+| `graph_search` | Hybrid: semantic + graph subgraph expansion |
+| That's all 15 tools | See full list in [`CONCEPT.md §7`](CONCEPT.md#7-mcp-protocol) |
 
 ---
 
@@ -236,7 +242,7 @@ All via `CORTEX_*` environment variables:
 | `CORTEX_QDRANT_PORT` | `6333` | Qdrant port |
 | `CORTEX_QDRANT_TIMEOUT` | `30` | Connection timeout (s) |
 | `CORTEX_COLLECTION_NAME` | `cortex_memory` | Qdrant collection name |
-| `CORTEX_EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | Embedding model (50+ languages) |
+| `CORTEX_EMBEDDING_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | Embedding model (50+ languages) |
 | `CORTEX_ARCHIVE_DAYS_THRESHOLD` | `7` | Days before auto-archive |
 | `CORTEX_DESKTOP_HOT_LIMIT` | `5` | Max hot nodes in viewport |
 | `CORTEX_DESKTOP_HISTORY_LIMIT` | `10` | Max history entries |
@@ -296,7 +302,7 @@ pytest tests/ -v
 pytest tests/ --cov=src.cortex -v
 ```
 
-Tests cover every component: models (17), config (19), database (26), graph (19), desktop (14), vector (19), server (19), integration (3).
+Tests cover every component: models (17), config (19), database (26), graph (19), desktop (14), vector (19), server (19), integration (3) — 136+ total.
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for guidelines.
 

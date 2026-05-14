@@ -8,7 +8,7 @@
 
 ## Problem
 
-The fractal graph memory system needs a vector index for semantic search. The vector store must support multi-layer indexing (Entity + Chunk + Fact), hybrid search (dense + sparse), and tight integration with the graph.
+The fractal graph memory system needs a vector index for semantic search. The vector store must support multi-layer indexing (Entity + Chunk + Fact), payload filtering, and tight integration with the graph.
 
 ## Options
 
@@ -22,7 +22,6 @@ Lightweight, embedded vector database.
 - Good for small projects
 
 **Cons**:
-- No sparse vector support
 - Limited filtering capabilities
 - Less mature than Qdrant
 - Performance degrades at scale
@@ -34,7 +33,6 @@ Managed vector database as a service.
 **Pros**:
 - Fully managed
 - Good performance
-- Built-in hybrid search
 
 **Cons**:
 - External service dependency
@@ -44,11 +42,10 @@ Managed vector database as a service.
 
 ### Option C: Qdrant (selected)
 
-Open-source vector database with dense + sparse vector support.
+Open-source vector database with dense vector support and rich payload filtering.
 
 **Pros**:
 - Open source, self-hosted
-- Dense + sparse vectors (hybrid search)
 - Rich filtering with payload
 - Good performance
 - Docker deployment
@@ -66,22 +63,18 @@ Use Qdrant as the vector index.
 ### Rationale
 
 1. **Already in use** — Qdrant was already part of the project's Docker setup
-2. **Hybrid search** — dense + sparse vectors for better semantic search
-3. **Payload filtering** — filter by workspace_id, node type, status
-4. **Multi-layer indexing** — separate collections or payload-based filtering for Entity/Chunk/Fact
-5. **Self-hosted** — no external API dependencies
+2. **Payload filtering** — filter by workspace_id, node type, status
+3. **Multi-layer indexing** — payload-based filtering for Entity/Chunk/Fact layers
+4. **Self-hosted** — no external API dependencies
+5. **Dual vector config** — default unnamed vector (for Qdrant admin UI) + named vector `"primary"` (for query_points search)
 
 ### Implementation
 
 ```python
-# Qdrant collection configuration
+# Qdrant collection configuration — dual vector setup
 vectors_config = {
-    "size": 384,  # paraphrase-multilingual-MiniLM-L12-v2
-    "distance": "Cosine",
-    "on_disk": True,
-}
-sparse_vectors_config = {
-    "index": {"on_disk": True},
+    "": VectorParams(size=384, distance=Distance.COSINE),       # default (admin UI)
+    "primary": VectorParams(size=384, distance=Distance.COSINE), # named (search)
 }
 
 # Payload for each vector
@@ -89,8 +82,10 @@ payload = {
     "workspace_id": str,
     "node_id": str,
     "node_type": str,  # entity|fact|decision|chunk|...
+    "layer": str,      # entity|chunk|fact
     "status": str,     # active|stale|archived
-    "text": str,       # original text for context
+    "text": str,       # original text for context (truncated to 500 chars)
+    "tags": str,       # JSON-encoded array
 }
 ```
 
@@ -99,7 +94,8 @@ payload = {
 - Qdrant runs as a Docker container — adds deployment complexity
 - Vectors are indexed by node_id — graph and vector stores are linked
 - Payload filtering enables workspace isolation
-- Sparse vectors enable keyword-style search alongside semantic search
+- Embedding is duplicated into both default and named vectors for UI compatibility
+- Sparse vectors (BM25-style) are **not used** — search relies on dense cosine similarity only
 
 ## Related ADRs
 

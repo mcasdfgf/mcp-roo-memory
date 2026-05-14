@@ -240,8 +240,7 @@ CREATE INDEX idx_nav_workspace ON navigation_history(workspace_id);
 **Collection**: `cortex_memory`
 
 **Parameters**:
-- `vectors_config`: `fastembed` auto-configure (paraphrase-multilingual-MiniLM-L12-v2, 384d)
-- `sparse_vectors_config`: enabled for hybrid search (BM25-style)
+- `vectors_config`: dual vector setup — default unnamed vector (for Qdrant admin UI) + named vector `"primary"` (for `query_points` search), both 384d, Cosine distance
 - `distance`: Cosine
 
 **Payload** (vector metadata):
@@ -251,17 +250,20 @@ CREATE INDEX idx_nav_workspace ON navigation_history(workspace_id);
     "workspace_id": "workspace-identifier",
     "node_type": "entity|fact|chunk|thought|...",
     "layer": "entity|chunk|fact",
-    "tags": ["auth", "jwt", "security"],
+    "tags": "[\"auth\", \"jwt\", \"security\"]",
     "status": "active|stale",
     "created_at": "2026-05-12T20:00:00Z"
 }
 ```
+
+Note: `tags` is stored as a JSON-encoded string (not a native array) because Qdrant handles strings more predictably across versions. Both `node_id` and `workspace_id` are used for filtering.
 
 **Indexing Strategy**:
 - Entity, Fact, Decision, Chunk, Thought, Question, Hypothesis, Action, Error, Note, Pattern, Goal, Constraint — vectorized
 - Session, Task, Subtask, Fileref — not vectorized
 - When a node is deleted from the graph, its vector is removed from Qdrant
 - When node text is updated, the old vector is replaced
+- Each embedding is duplicated into both a default unnamed vector (for the Qdrant admin UI) and a named vector `"primary"` (for query_points search)
 
 ---
 
@@ -346,25 +348,32 @@ def archive_stale_nodes(workspace_id: str, days_threshold: int = 7):
 ### Vector Synchronization
 
 ```python
-def update_node(node_id: str, new_data: dict):
-    with sqlite.transaction():
-        old_node = sqlite.get("SELECT * FROM nodes WHERE id = ?", node_id)
-        sqlite.update("""
-            UPDATE nodes
-            SET data = ?, updated_at = datetime('now')
-            WHERE id = ?
-        """, (json.dumps(new_data), node_id))
+def update_node(node_id: str, data: dict[str, Any]) -> Optional[Node]:
+    old_node = self.db.get_node(node_id)
+    if not old_node:
+        return None
 
-        # If text changed — re-index vector
-        if old_node.data.get("text") != new_data.get("text"):
-            text = new_data.get("text", "")
-            if text:
-                qdrant.delete(collection="cortex_memory",
-                              points_selector=Filter(must=[FieldCondition(
-                                  key="node_id", match=MatchValue(value=node_id))]))
-                qdrant.add(collection="cortex_memory",
-                           documents=[text],
-                           metadata=[{"node_id": node_id, "workspace_id": old_node.workspace_id}])
+    updated = self.db.update_node(node_id, data=data)
+    if not updated:
+        return None
+
+    # If text changed — re-index the vector
+    old_text = old_node.data.get("text", "")
+    new_text = data.get("text", old_text)
+    if old_text != new_text and new_text and self.vector.should_vectorize(old_node.type):
+        self.vector.remove_node_vector(node_id)
+        self.vector.index_node(
+            node_id=node_id,
+            text=new_text,
+            metadata={
+                "workspace_id": old_node.workspace_id,
+                "node_type": old_node.type.value,
+                "layer": self.vector.get_layer_for_type(old_node.type),
+                "status": "active",
+            },
+        )
+
+    return updated
 ```
 
 ---
@@ -377,45 +386,41 @@ def update_node(node_id: str, new_data: dict):
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `graph_init` | Create session root | `workspace_id: str` |
-| `graph_add_node` | Add a node | `parent_id: str, type: str, data: dict` |
-| `graph_get_node` | Get node with relations | `node_id: str, depth: int=1` |
-| `graph_traverse` | Traverse graph from node | `start_id: str, relation: str, depth: int` |
-| `graph_decompose` | Decompose a task | `task_id: str, subtasks: list[dict]` |
-| `graph_walk` | Walk the graph | `start_id: str, steps: int` |
-| `graph_search` | Search the graph | `query: str, filters: dict` |
-| `graph_update_node` | Update node (mutation) | `node_id: str, data: dict` |
-| `graph_delete_node` | Delete node and its vectors | `node_id: str, cascade: bool` |
+| `graph_add_node` | Add a node | `parent_id: str, type: str, data: dict, workspace_id: str` |
+| `graph_get_node` | Get node with relations | `node_id: str, depth: int=2` |
 | `graph_add_relation` | Add a relation | `from_id: str, to_id: str, type: str, weight: float` |
-| `graph_supersede` | Replace node (supersedes) | `old_id: str, new_data: dict` |
+| `graph_traverse` | Traverse graph from node | `start_id: str, relation: str, depth: int=3` |
+| `graph_walk` | Walk along a reasoning chain | `start_id: str, steps: int=5` |
+| `graph_decompose` | Decompose a task | `task_id: str, subtasks: list[dict]` |
+| `graph_update_node` | Update node (Strategy A: Update) | `node_id: str, data: dict` |
+| `graph_supersede` | Replace node (Strategy B: Supersedes) | `old_id: str, new_data: dict` |
+| `graph_delete_node` | Delete node and its vectors | `node_id: str, cascade: bool` |
+| `graph_search` | Hybrid: vector + subgraph expansion | `query: str, workspace_id: str` |
 
 #### Vector
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `vector_store` | Store text with vectorization | `text: str, metadata: dict` |
-| `vector_search` | Semantic search | `query: str, top_k: int=10, filters: dict` |
-| `vector_hybrid_search` | Hybrid: vector + graph | `query: str, graph_filters: dict, top_k: int` |
+| `vector_store` | Store text with automatic vectorization | `text: str, metadata: dict` |
+| `vector_search` | Semantic search (meaning-based) | `query: str, top_k: int=10, workspace_id: str` |
+| *(no separate `vector_hybrid_search` — use `graph_search` instead)* | | |
 
 #### Desktop
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `desktop_open` | Open session desktop | `workspace_id: str` |
-| `desktop_focus` | Focus on a node | `node_id: str` |
+| `desktop_open` | Open workspace session, return Hot/Cold/Archive viewport | `workspace_id: str` |
+| `desktop_focus` | Focus on a node, expand its subgraph | `node_id: str, workspace_id: str` |
 | `desktop_history` | Navigation history | `workspace_id: str, limit: int=20` |
-| `desktop_branch` | Create reasoning branch | `from_node_id: str, context: dict` |
-| `desktop_subgraph` | Show node subgraph | `node_id: str, depth: int=2` |
 
 ### 7.2 Resources
 
 | URI | Description |
 |-----|-------------|
-| `cortex://graph/{workspace_id}` | Full session graph |
-| `cortex://node/{node_id}` | Specific node with context |
-| `cortex://desktop/{workspace_id}` | Current desktop (viewport) |
-| `cortex://search/{query}` | Search results |
-| `cortex://walk/{start_id}/{steps}` | Graph walk path |
+| `cortex://graph/{workspace_id}` | Full session graph (via `desktop_open`) |
+| `cortex://node/{node_id}` | Specific node with context (via `get_subgraph`) |
+| `cortex://desktop/{workspace_id}` | Current desktop viewport (via `desktop_open`) |
+| `cortex://search/{query}` | Hybrid search results (via `graph_search`) |
 
 ---
 
