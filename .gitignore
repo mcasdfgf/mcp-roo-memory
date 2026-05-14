@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+cortex.db
+cortex.db-shm
+cortex.db-wal
+.env
+*.egg-info/
+dist/
+build/
+concat_repo.sh
+concat_repo_output.txt

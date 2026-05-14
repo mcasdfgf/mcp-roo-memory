@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "mcp-roo-memory"
+version = "0.1.0"
+description = "Fractal memory system for Roo Code via MCP protocol"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "mcp-roo-memory contributors"},
+]
+urls = {Homepage = "https://github.com/your-org/mcp-roo-memory", Source = "https://github.com/your-org/mcp-roo-memory", BugTracker = "https://github.com/your-org/mcp-roo-memory/issues"}
+dependencies = [
+    "mcp>=1.0.0",
+    "qdrant-client>=1.9.0",
+    "fastembed>=0.3.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+]

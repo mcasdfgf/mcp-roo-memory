@@ -1,0 +1,33 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: cortex-qdrant
+    # Ports not exposed by default — cortex connects via internal Docker DNS (qdrant:6333).
+    # Uncomment below if you need external access to Qdrant:
+    # ports:
+    #   - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+
+  cortex:
+    build: .
+    container_name: cortex-mcp
+    depends_on:
+      - qdrant
+    volumes:
+      - cortex_data:/data
+    environment:
+      - CORTEX_DB_PATH=/data/cortex.db
+      - CORTEX_QDRANT_HOST=qdrant
+      - CORTEX_QDRANT_PORT=6333
+      - CORTEX_QDRANT_TIMEOUT=30
+      - CORTEX_COLLECTION_NAME=cortex_memory
+      - CORTEX_ARCHIVE_DAYS_THRESHOLD=7
+      - CORTEX_DESKTOP_HOT_LIMIT=5
+      - CORTEX_DESKTOP_HISTORY_LIMIT=10
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  cortex_data:

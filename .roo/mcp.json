@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "cortex": {
+      "command": "docker",
+      "args": [
+        "exec",
+        "-i",
+        "cortex-mcp",
+        "python3",
+        "-m",
+        "src.cortex",
+        "--workspace",
+        "your-project-name"
+      ],
+      "alwaysAllow": [
+        "desktop_open",
+        "desktop_focus",
+        "desktop_history",
+        "graph_add_node",
+        "graph_add_relation",
+        "graph_get_node",
+        "graph_traverse",
+        "graph_walk",
+        "graph_decompose",
+        "graph_update_node",
+        "graph_supersede",
+        "graph_delete_node",
+        "graph_search",
+        "vector_search",
+        "vector_store"
+      ]
+    }
+  }
+}
