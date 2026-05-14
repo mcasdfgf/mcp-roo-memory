@@ -271,6 +271,9 @@ All via `CORTEX_*` environment variables:
 |----------|-----------------|
 | [`CONCEPT.md`](CONCEPT.md) | Full philosophy, data model, node taxonomy (17 types), relation taxonomy (22 types), SQL schema |
 | [`ADR-001`](plans/ADR-001-fractal-memory.md) | Fractal memory architecture decision |
+| [`ADR-002`](plans/ADR-002-sqlite-graph.md) | SQLite + JSON for graph instead of Neo4j/Cayley |
+| [`ADR-003`](plans/ADR-003-qdrant-vectors.md) | Qdrant for vectors (existing) |
+| [`ADR-004`](plans/ADR-004-fastembed.md) | fastembed for embeddings (paraphrase-multilingual-MiniLM-L12-v2) |
 | [`ADR-005`](plans/ADR-005-desktop-viewport.md) | Desktop Viewport — context window strategy |
 | [`ADR-006`](plans/ADR-006-mutation-strategy.md) | Knowledge evolution: update / supersede / stale |
 | [`ADR-007`](plans/ADR-007-regression-pattern.md) | Regression search: meaning → context → files |
