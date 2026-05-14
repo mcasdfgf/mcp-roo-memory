@@ -452,9 +452,8 @@ sequenceDiagram
     Q-->>Roo: [entity: "JWT Auth", fact: "PyJWT RS256", chunk: "..."]
 
     Roo->>G: get_subgraph([entity_id, fact_id])
-    G-->>Roo: entity -> indexes -> fileref jwt.py
-               fact -> extracted_from -> fileref jwt.py
-               fact -> supports -> decision "RS256"
+    G-->>Roo: results
+    Note over G,Roo: entity indexes → fileref jwt.py<br/>fact extracted_from → fileref jwt.py<br/>fact supports → decision "RS256"
 
     Roo->>FS: read("src/auth/jwt.py")
     FS-->>Roo: ...code...
@@ -557,12 +556,12 @@ payload = {
 | ADR | Decision |
 |-----|----------|
 | [ADR-001](plans/ADR-001-fractal-memory.md) | Custom MCP server instead of extending existing Memory MCP |
-| ADR-002 | SQLite + JSON for graph instead of Neo4j/Cayley |
-| ADR-003 | Qdrant for vectors (existing) |
-| ADR-004 | fastembed for embeddings (paraphrase-multilingual-MiniLM-L12-v2) |
-| ADR-005 | Desktop Viewport: Hot/Cold/Archive for context window control |
-| ADR-006 | Mutation strategy: Update/Supersedes/Stale-cascade |
-| ADR-007 | Regression search pattern: meaning → context → specifics |
+| [ADR-002](plans/ADR-002-sqlite-graph.md) | SQLite + JSON for graph instead of Neo4j/Cayley |
+| [ADR-003](plans/ADR-003-qdrant-vectors.md) | Qdrant for vectors (existing) |
+| [ADR-004](plans/ADR-004-fastembed.md) | fastembed for embeddings (paraphrase-multilingual-MiniLM-L12-v2) |
+| [ADR-005](plans/ADR-005-desktop-viewport.md) | Desktop Viewport: Hot/Cold/Archive for context window control |
+| [ADR-006](plans/ADR-006-mutation-strategy.md) | Mutation strategy: Update/Supersedes/Stale-cascade |
+| [ADR-007](plans/ADR-007-regression-pattern.md) | Regression search pattern: meaning → context → specifics |
 
 ---
 
