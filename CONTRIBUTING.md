@@ -51,7 +51,7 @@ Coverage is checked but not strictly enforced — just don't lower it significan
 
 ### Documentation
 
-- Update [`README.md`](README.md) (and [`README.ru.md`](README.ru.md) for Russian readers) if you change the API or add features
+- Update [`README.md`](README.md) if you change the API or add features
 - Update [`CONCEPT.md`](CONCEPT.md) if you change the data model
 - For significant architectural decisions, add an ADR in [`plans/`](plans/)
 - Tag decisions with `ADRNNN` in commit messages

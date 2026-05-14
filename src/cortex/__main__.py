@@ -1,4 +1,4 @@
-"""Entry point для запуска MCP-сервера mcp-cortex через stdio.
+"""Entry point for running the mcp-cortex MCP server via stdio.
 
 Usage:
     python -m src.cortex                         # workspace = CWD basename / default
