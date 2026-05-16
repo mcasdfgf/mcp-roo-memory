@@ -309,3 +309,85 @@ class TestDatabaseManagerEdgeCases:
         updated = db_manager.get_node(node.id)
         assert updated is not None
         assert updated.data["text"] == "updated-via-execute_write"
+
+
+class TestDatabaseManagerTemporal:
+    """Temporal layer operations."""
+
+    def test_relation_updated_at_on_create(self, db_manager: DatabaseManager):
+        a = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1"))
+        b = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1"))
+        now = datetime.now(timezone.utc).isoformat()
+        rel = db_manager.create_relation(Relation(
+            from_id=a.id, to_id=b.id, type=RelationType.SUPPORTS,
+            created_at=now, updated_at=now,
+        ))
+        assert rel.updated_at is not None
+        assert rel.updated_at == rel.created_at
+        # Verify in DB
+        fetched = db_manager.get_relations_for_node(a.id)
+        assert fetched[0].updated_at == rel.updated_at
+
+    def test_update_relation_data(self, db_manager: DatabaseManager):
+        a = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1"))
+        b = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1"))
+        rel = db_manager.create_relation(Relation(from_id=a.id, to_id=b.id, type=RelationType.SUPPORTS))
+        updated = db_manager.update_relation(rel.id, data={"note": "updated"})
+        assert updated is not None
+        assert updated.data["note"] == "updated"
+        assert updated.updated_at > rel.updated_at
+
+    def test_update_relation_weight(self, db_manager: DatabaseManager):
+        a = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1"))
+        b = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1"))
+        rel = db_manager.create_relation(Relation(from_id=a.id, to_id=b.id, type=RelationType.SUPPORTS, weight=0.5))
+        updated = db_manager.update_relation(rel.id, weight=1.0)
+        assert updated is not None
+        assert updated.weight == 1.0
+
+    def test_time_range_query(self, db_manager: DatabaseManager):
+        now = "2026-05-16T12:00:00Z"
+        before = "2026-05-16T10:00:00Z"
+        after = "2026-05-16T14:00:00Z"
+        n1 = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1", created_at=before, updated_at=before))
+        n2 = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1", created_at=now, updated_at=now))
+        n3 = db_manager.create_node(Node(type=NodeType.FACT, workspace_id="ws1", created_at=after, updated_at=after))
+
+        # All three
+        all_nodes = db_manager.time_range_query("ws1")
+        assert len(all_nodes) == 3
+
+        # Between before and now
+        middle = db_manager.time_range_query("ws1", from_time=before, to_time=now)
+        assert len(middle) >= 2  # before + now
+
+        # Only after
+        late = db_manager.time_range_query("ws1", from_time=after)
+        assert len(late) >= 1
+        assert late[0].created_at >= after
+
+    def test_get_anchor_none(self, db_manager: DatabaseManager):
+        anchor = db_manager.get_anchor("no_history")
+        assert anchor is None
+
+    def test_get_anchor_last_focus(self, db_manager: DatabaseManager):
+        db_manager.add_nav_history(NavHistoryEntry(
+            workspace_id="ws1", node_id="node-1", action="focus",
+        ))
+        db_manager.add_nav_history(NavHistoryEntry(
+            workspace_id="ws1", node_id="node-2", action="focus",
+        ))
+        anchor = db_manager.get_anchor("ws1")
+        assert anchor is not None
+        assert anchor[0] == "node-2"  # last focus
+
+    def test_temporal_indexes_created(self, db_manager: DatabaseManager):
+        """Verify temporal indexes exist."""
+        indexes = db_manager.conn.execute("PRAGMA index_list(nodes)").fetchall()
+        index_names = {r[1] for r in indexes}
+        assert "idx_nodes_created" in index_names
+        assert "idx_nodes_updated" in index_names
+
+        nav_indexes = db_manager.conn.execute("PRAGMA index_list(navigation_history)").fetchall()
+        nav_names = {r[1] for r in nav_indexes}
+        assert "idx_nav_created" in nav_names

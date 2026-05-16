@@ -205,6 +205,19 @@ class TestViewport:
         assert vp.last_focus == "focus-1"
 
 
+class TestRelationTemporal:
+    """Relation temporal fields."""
+
+    def test_relation_updated_at_defaults_to_now(self):
+        rel = Relation(from_id="a", to_id="b", type=RelationType.SUPPORTS)
+        assert rel.updated_at is not None
+        assert rel.updated_at >= rel.created_at
+
+    def test_relation_updated_at_explicit(self):
+        rel = Relation(from_id="a", to_id="b", type=RelationType.SUPPORTS, updated_at="2026-05-16T00:00:00Z")
+        assert rel.updated_at == "2026-05-16T00:00:00Z"
+
+
 class TestNavHistoryEntry:
     """NavHistoryEntry model."""
 

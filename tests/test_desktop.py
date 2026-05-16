@@ -129,3 +129,42 @@ class TestDesktopManagerSubgraph:
         )
         subgraph = desktop_manager.subgraph(task.id)
         assert subgraph["node"] is not None
+
+
+class TestDesktopManagerTemporal:
+    """Temporal layer via desktop."""
+
+    def test_timeline_returns_events(self, desktop_manager: DesktopManager, graph_manager):
+        session = desktop_manager.open("test_ws")
+        session_id = session["session"]["id"]
+        graph_manager.add_node(
+            parent_id=session_id, node_type=NodeType.TASK,
+            data={"title": "a task"}, workspace_id="test_ws",
+        )
+        timeline = desktop_manager.timeline("test_ws")
+        assert len(timeline) >= 1
+        types_in_timeline = {e["type"] for e in timeline}
+        assert "node" in types_in_timeline
+        assert "nav" in types_in_timeline
+
+    def test_timeline_sorted(self, desktop_manager: DesktopManager, graph_manager):
+        session = desktop_manager.open("test_ws")
+        timeline = desktop_manager.timeline("test_ws")
+        # Verify chronological order
+        for i in range(len(timeline) - 1):
+            assert timeline[i]["created_at"] <= timeline[i + 1]["created_at"]
+
+    def test_anchor_in_open(self, desktop_manager: DesktopManager, graph_manager):
+        session = desktop_manager.open("test_ws")
+        session_id = session["session"]["id"]
+        task = graph_manager.add_node(
+            parent_id=session_id, node_type=NodeType.TASK,
+            data={"title": "Focused task"}, workspace_id="test_ws",
+        )
+        desktop_manager.focus(task.id, "test_ws")
+
+        # Reopen — anchor should be the focused task
+        vp = desktop_manager.open("test_ws")
+        assert len(vp["hot_nodes"]) > 0
+        # Anchor node should be first in hot_nodes
+        assert vp["hot_nodes"][0]["id"] == task.id

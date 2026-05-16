@@ -9,6 +9,7 @@ from typing import Any, Optional
 
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import (
+    DatetimeRange,
     FieldCondition,
     Filter,
     MatchValue,
@@ -199,12 +200,15 @@ class VectorManager:
         workspace_id: Optional[str] = None,
         node_type: Optional[str] = None,
         status_filter: Optional[str] = "active",
+        time_from: Optional[str] = None,
+        time_to: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """
         Semantic search.
 
         1. Computes the query embedding locally via fastembed
         2. Searches using the named vector primary via query_points
+        3. Filters by optional time range (created_at in Qdrant payload)
         """
         filter_conditions = []
         if workspace_id:
@@ -218,6 +222,18 @@ class VectorManager:
         if status_filter:
             filter_conditions.append(
                 FieldCondition(key="status", match=MatchValue(value=status_filter))
+            )
+        if time_from or time_to:
+            range_kwargs = {}
+            if time_from:
+                range_kwargs["gte"] = time_from
+            if time_to:
+                range_kwargs["lte"] = time_to
+            filter_conditions.append(
+                FieldCondition(
+                    key="created_at",
+                    range=DatetimeRange(**range_kwargs),
+                )
             )
 
         query_filter = Filter(must=filter_conditions) if filter_conditions else None

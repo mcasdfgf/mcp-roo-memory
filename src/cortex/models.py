@@ -120,6 +120,7 @@ class Relation(BaseModel):
     weight: float = 1.0
     data: dict[str, Any] = Field(default_factory=dict)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class NavHistoryEntry(BaseModel):

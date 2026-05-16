@@ -30,13 +30,26 @@ class DesktopManager:
         # 2. GC — archive stale nodes
         archived_count = self.db.archive_stale_nodes(workspace_id)
 
-        # 3. Last focuses = Hot nodes
-        hot_ids = self.db.get_last_focus_nodes(workspace_id, limit=config.desktop_hot_limit)
-        hot_nodes = []
-        for hid in hot_ids:
-            node = self.db.get_node(hid)
-            if node and node.status.value == "active":
-                hot_nodes.append(node)
+        # 3. Hot nodes — anchor first (deterministic), then recent focuses
+        hot_ids: set[str] = set()
+        hot_nodes: list[Node] = []
+
+        # 3a. Deterministic anchor: last focus with timestamp
+        anchor = self.db.get_anchor(workspace_id)
+        if anchor:
+            anchor_node = self.db.get_node(anchor[0])
+            if anchor_node and anchor_node.status.value == "active":
+                hot_nodes.append(anchor_node)
+                hot_ids.add(anchor_node.id)
+
+        # 3b. Remaining recent focuses
+        recent = self.db.get_last_focus_nodes(workspace_id, limit=config.desktop_hot_limit)
+        for hid in recent:
+            if hid not in hot_ids:
+                node = self.db.get_node(hid)
+                if node and node.status.value == "active":
+                    hot_nodes.append(node)
+                    hot_ids.add(hid)
 
         # If no focus history, use the session root
         if not hot_nodes and session:
@@ -96,6 +109,45 @@ class DesktopManager:
         """Navigation history."""
         entries = self.db.get_nav_history(workspace_id, limit)
         return [e.model_dump() for e in entries]
+
+    def timeline(
+        self,
+        workspace_id: str,
+        from_time: Optional[str] = None,
+        to_time: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Flat timeline of all events in a session: nodes + nav history."""
+        # 1. Nodes created in time range
+        nodes = self.db.time_range_query(workspace_id, from_time, to_time, limit=limit)
+
+        # 2. Nav history events in time range
+        nav = self.db.get_nav_history(workspace_id, limit * 2)
+        if from_time:
+            nav = [e for e in nav if e.created_at >= from_time]
+        if to_time:
+            nav = [e for e in nav if e.created_at <= to_time]
+
+        # 3. Merge and sort by created_at
+        events: list[dict] = []
+        for n in nodes:
+            events.append({
+                "type": "node",
+                "node_type": n.type.value,
+                "node_id": n.id,
+                "title": n.data.get("title", ""),
+                "created_at": n.created_at,
+            })
+        for e in nav:
+            events.append({
+                "type": "nav",
+                "action": e.action,
+                "node_id": e.node_id,
+                "created_at": e.created_at,
+            })
+
+        events.sort(key=lambda x: x["created_at"])
+        return events[:limit]
 
     def branch(
         self, from_node_id: str, workspace_id: str, context: Optional[dict] = None

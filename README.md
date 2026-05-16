@@ -9,6 +9,7 @@ LLMs have a short memory. Every new conversation starts from scratch — context
 - **Semantic search** — find what matters by meaning, not keywords (50+ languages)
 - **Context window control** — hot/cold/archive tiers so you don't drown in tokens
 - **Knowledge evolution** — decisions can be superseded, facts can be updated, stale data gets archived
+- **Temporal awareness** — time as first-class citizen: chronological walks, session timelines, temporal vector filters
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue)
 ![MIT](https://img.shields.io/badge/license-MIT-green)
@@ -151,6 +152,7 @@ MCP config:
 | **No navigation** — can't walk a reasoning chain | **Graph traversal** — follow `supersedes`, `derives_from`, `leads_to` relations like a path |
 | **Stale facts linger** — old decisions pollute context | **Mutation strategy** — Update (typo fix) / Supersede (approach changed) / Stale-cascade (rework) |
 | **Keyword search fails** — "auth implementation" doesn't find "JWT with RS256" | **Semantic vector search** — multilingual embeddings (50+ languages) via Qdrant + fastembed |
+| **No time axis** — can't answer "what happened in what order" | **Temporal layer** — chronological walks, session timelines, temporal vector filters |
 
 ---
 
@@ -163,7 +165,7 @@ MCP config:
                         │ stdio (MCP protocol)
 ┌──────────────────────▼───────────────────────┐
 │               CortexServer                     │
-│         15 tools · 4 resources                 │
+│         17 tools · 4 resources                 │
 ├──────────┬──────────┬──────────┬─────────────┤
 │ Graph    │ Vector   │ Desktop  │ Database    │
 │ CRUD,    │ Qdrant + │ Hot/     │ SQLite      │
@@ -227,7 +229,9 @@ For deep understanding of the memory model, see [`CONCEPT.md`](CONCEPT.md).
 | `vector_search` | Find things by meaning, across 50+ languages |
 | `vector_store` | Store text with automatic vectorization |
 | `graph_search` | Hybrid: semantic + graph subgraph expansion |
-| That's all 15 tools | See full list in [`CONCEPT.md §7`](CONCEPT.md#7-mcp-protocol) |
+| `temporal_walk` | Chronological graph traversal (time axis) |
+| `session_timeline` | Flat timeline of all events in a session |
+| That's all 17 tools | See full list in [`CONCEPT.md §8`](CONCEPT.md#8-mcp-protocol) |
 
 ---
 
@@ -261,11 +265,11 @@ All via `CORTEX_*` environment variables:
 │   ├── __main__.py    — MCP server entry point (stdio)
 │   ├── config.py      — Configuration (pydantic-settings)
 │   ├── db.py          — DatabaseManager (SQLite)
-│   ├── desktop.py     — DesktopManager (viewport)
-│   ├── graph.py       — GraphManager (CRUD, navigation, mutation)
+│   ├── desktop.py     — DesktopManager (viewport + timeline)
+│   ├── graph.py       — GraphManager (CRUD, navigation, mutation, temporal)
 │   ├── models.py      — Pydantic models (Node, Relation, Viewport)
 │   ├── server.py      — MCP server (17 tools, 4 resources)
-│   └── vector.py      — VectorManager (Qdrant, embeddings)
+│   └── vector.py      — VectorManager (Qdrant, embeddings, temporal filters)
 └── tests/
 ```
 
@@ -283,6 +287,7 @@ All via `CORTEX_*` environment variables:
 | [`ADR-005`](plans/ADR-005-desktop-viewport.md) | Desktop Viewport — context window strategy |
 | [`ADR-006`](plans/ADR-006-mutation-strategy.md) | Knowledge evolution: update / supersede / stale |
 | [`ADR-007`](plans/ADR-007-regression-pattern.md) | Regression search: meaning → context → files |
+| [`ADR-008`](plans/ADR-008-temporal-layer.md) | Temporal layer — time as first-class citizen |
 | [`CHANGELOG.md`](CHANGELOG.md) | Project release history |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development guidelines |
 
@@ -295,7 +300,7 @@ All via `CORTEX_*` environment variables:
 pip install -e .
 pip install pytest pytest-asyncio
 
-# Run all tests (176+ tests)
+# Run all tests (188+ tests)
 pytest tests/ -v
 
 # With coverage

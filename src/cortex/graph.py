@@ -221,6 +221,28 @@ class GraphManager:
                 })
         return results
 
+    def temporal_walk(
+        self,
+        workspace_id: str,
+        from_time: Optional[str] = None,
+        to_time: Optional[str] = None,
+        relation_type: Optional[str] = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Walk the graph along the time axis.
+
+        Returns nodes ordered by created_at ASC within optional time range.
+        If relation_type is specified, filters by node type.
+        """
+        nodes = self.db.time_range_query(
+            workspace_id=workspace_id,
+            from_time=from_time,
+            to_time=to_time,
+            node_type=relation_type,
+            limit=limit,
+        )
+        return [n.model_dump() for n in nodes]
+
     # ──────────────────────────────────────────────
     # Task decomposition
     # ──────────────────────────────────────────────

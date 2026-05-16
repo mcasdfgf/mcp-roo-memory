@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from .config import config
 from .models import (
@@ -36,6 +39,7 @@ class DatabaseManager:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
+        self._migrate_v1_temporal()
 
     def close(self) -> None:
         if self.conn:
@@ -84,12 +88,32 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(parent_id)",
                 "CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type)",
                 "CREATE INDEX IF NOT EXISTS idx_nodes_status ON nodes(status)",
+                "CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(workspace_id, created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_nodes_updated ON nodes(workspace_id, updated_at)",
                 "CREATE INDEX IF NOT EXISTS idx_relations_from ON relations(from_id)",
                 "CREATE INDEX IF NOT EXISTS idx_relations_to ON relations(to_id)",
                 "CREATE INDEX IF NOT EXISTS idx_relations_type ON relations(type)",
                 "CREATE INDEX IF NOT EXISTS idx_nav_workspace ON navigation_history(workspace_id)",
+                "CREATE INDEX IF NOT EXISTS idx_nav_created ON navigation_history(workspace_id, created_at)",
             ]:
                 self.conn.execute(idx)
+
+    # ──────────────────────────────────────────────
+    # Migrations
+    # ──────────────────────────────────────────────
+
+    def _migrate_v1_temporal(self) -> None:
+        """Add updated_at column to relations if missing."""
+        cursor = self.conn.execute("PRAGMA table_info(relations)")  # type: ignore
+        cols = {row[1] for row in cursor.fetchall()}
+        if "updated_at" not in cols:
+            self.conn.execute(  # type: ignore
+                "ALTER TABLE relations ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''"
+            )
+            self.conn.execute(  # type: ignore
+                "UPDATE relations SET updated_at = created_at"
+            )
+            logger.info("Migration v1: added updated_at to relations")
 
     # ──────────────────────────────────────────────
     # Nodes
@@ -282,8 +306,8 @@ class DatabaseManager:
         """Create a relation."""
         with self.conn:  # type: ignore
             self.conn.execute(
-                """INSERT INTO relations (id, from_id, to_id, type, weight, data, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO relations (id, from_id, to_id, type, weight, data, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     relation.id,
                     relation.from_id,
@@ -292,9 +316,34 @@ class DatabaseManager:
                     relation.weight,
                     json.dumps(relation.data, ensure_ascii=False),
                     relation.created_at,
+                    relation.updated_at,
                 ),
             )
         return relation
+
+    def update_relation(
+        self, relation_id: str, data: Optional[dict] = None, weight: Optional[float] = None
+    ) -> Optional[Relation]:
+        """Update a relation — updates updated_at."""
+        now = datetime.now(timezone.utc).isoformat()
+        sets = ["updated_at = ?"]
+        params: list[Any] = [now]
+        if data is not None:
+            sets.append("data = ?")
+            params.append(json.dumps(data, ensure_ascii=False))
+        if weight is not None:
+            sets.append("weight = ?")
+            params.append(weight)
+        params.append(relation_id)
+        with self.conn:  # type: ignore
+            self.conn.execute(
+                f"UPDATE relations SET {', '.join(sets)} WHERE id = ?", params
+            )
+        # Return updated relation
+        row = self.conn.execute(  # type: ignore
+            "SELECT * FROM relations WHERE id = ?", (relation_id,)
+        ).fetchone()
+        return self._row_to_relation(row) if row else None
 
     def delete_relation(self, relation_id: str) -> bool:
         """Delete a relation."""
@@ -365,6 +414,47 @@ class DatabaseManager:
         return {r["node_id"] for r in rows}
 
     # ──────────────────────────────────────────────
+    # Temporal queries
+    # ──────────────────────────────────────────────
+
+    def time_range_query(
+        self,
+        workspace_id: str,
+        from_time: Optional[str] = None,
+        to_time: Optional[str] = None,
+        node_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[Node]:
+        """Query nodes by time range. Filters by created_at."""
+        conditions = ["workspace_id = ?"]
+        params: list[Any] = [workspace_id]
+        if from_time:
+            conditions.append("created_at >= ?")
+            params.append(from_time)
+        if to_time:
+            conditions.append("created_at <= ?")
+            params.append(to_time)
+        if node_type:
+            conditions.append("type = ?")
+            params.append(node_type)
+
+        rows = self.conn.execute(  # type: ignore
+            f"SELECT * FROM nodes WHERE {' AND '.join(conditions)} ORDER BY created_at ASC LIMIT ?",
+            (*params, limit),
+        ).fetchall()
+        return [self._row_to_node(r) for r in rows if r]
+
+    def get_anchor(self, workspace_id: str) -> Optional[tuple[str, str]]:
+        """Get deterministic anchor: (node_id, created_at) of last focus."""
+        row = self.conn.execute(  # type: ignore
+            """SELECT node_id, created_at FROM navigation_history
+               WHERE workspace_id = ? AND action = 'focus'
+               ORDER BY created_at DESC LIMIT 1""",
+            (workspace_id,),
+        ).fetchone()
+        return (row["node_id"], row["created_at"]) if row else None
+
+    # ──────────────────────────────────────────────
     # SQL — for direct queries from GraphManager
     # ──────────────────────────────────────────────
 
@@ -408,4 +498,5 @@ class DatabaseManager:
             weight=row["weight"],
             data=json.loads(row["data"]) if isinstance(row["data"], str) else row["data"] or {},
             created_at=row["created_at"],
+            updated_at=row["updated_at"],
         )

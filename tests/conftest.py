@@ -114,21 +114,36 @@ class MockQdrantClient:
         results = []
         pts = self._points.get(collection_name, {})
 
+        def _to_str(v):
+            """Convert DatetimeRange gte/lte to ISO string."""
+            if v is None:
+                return None
+            if hasattr(v, 'isoformat'):
+                return v.isoformat()
+            return str(v)
+
         # Extract filters from query_filter if provided
         query_filter = kwargs.get("query_filter", None)
         filter_workspace_id = None
         filter_node_type = None
+        filter_time_from = None
+        filter_time_to = None
         if query_filter:
             must = getattr(query_filter, "must", []) or []
             for cond in must:
                 key = getattr(cond, "key", None)
                 match = getattr(cond, "match", None)
+                value_range = getattr(cond, "range", None)
                 if match:
                     val = getattr(match, "value", None)
                     if key == "workspace_id":
                         filter_workspace_id = val
                     elif key == "node_type":
                         filter_node_type = val
+                elif value_range:
+                    if key == "created_at":
+                        filter_time_from = _to_str(getattr(value_range, "gte", None))
+                        filter_time_to = _to_str(getattr(value_range, "lte", None))
 
         for pid, point in pts.items():
             payload = point.get("payload", {})
@@ -136,6 +151,10 @@ class MockQdrantClient:
             if filter_workspace_id and payload.get("workspace_id") != filter_workspace_id:
                 continue
             if filter_node_type and payload.get("node_type") != filter_node_type:
+                continue
+            if filter_time_from and payload.get("created_at", "") < filter_time_from:
+                continue
+            if filter_time_to and payload.get("created_at", "") > filter_time_to:
                 continue
             results.append(
                 MagicMock(

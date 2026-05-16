@@ -26,6 +26,7 @@ This doesn't work for complex tasks because:
 2. **Multi-layer Vector Index** (Qdrant) — Entity + Chunk + Fact for semantic search
 3. **Desktop Viewport** — lazy loading, Hot/Cold/Archive tiers for context window control
 4. **Mutation Strategy** — Update/Supersedes/Stale-cascade for knowledge evolution
+5. **Temporal Layer** — time as a first-class citizen: chronological walks, session timelines, temporal vector filters
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -240,7 +241,8 @@ CREATE INDEX idx_nav_workspace ON navigation_history(workspace_id);
 **Collection**: `cortex_memory`
 
 **Parameters**:
-- `vectors_config`: dual vector setup — default unnamed vector (for Qdrant admin UI) + named vector `"primary"` (for `query_points` search), both 384d, Cosine distance
+- `vectors_config`: `fastembed` auto-configure (paraphrase-multilingual-MiniLM-L12-v2, 384d)
+- `sparse_vectors_config`: enabled for hybrid search (BM25-style)
 - `distance`: Cosine
 
 **Payload** (vector metadata):
@@ -250,20 +252,17 @@ CREATE INDEX idx_nav_workspace ON navigation_history(workspace_id);
     "workspace_id": "workspace-identifier",
     "node_type": "entity|fact|chunk|thought|...",
     "layer": "entity|chunk|fact",
-    "tags": "[\"auth\", \"jwt\", \"security\"]",
+    "tags": ["auth", "jwt", "security"],
     "status": "active|stale",
     "created_at": "2026-05-12T20:00:00Z"
 }
 ```
-
-Note: `tags` is stored as a JSON-encoded string (not a native array) because Qdrant handles strings more predictably across versions. Both `node_id` and `workspace_id` are used for filtering.
 
 **Indexing Strategy**:
 - Entity, Fact, Decision, Chunk, Thought, Question, Hypothesis, Action, Error, Note, Pattern, Goal, Constraint — vectorized
 - Session, Task, Subtask, Fileref — not vectorized
 - When a node is deleted from the graph, its vector is removed from Qdrant
 - When node text is updated, the old vector is replaced
-- Each embedding is duplicated into both a default unnamed vector (for the Qdrant admin UI) and a named vector `"primary"` (for query_points search)
 
 ---
 
@@ -299,6 +298,7 @@ graph TB
 ```
 
 **Fractality Rules**:
+
 1. Any node can be a parent (have `parent_id`)
 2. Subgraph = all nodes reachable via `contains` from root
 3. Nesting depth is unlimited
@@ -306,9 +306,46 @@ graph TB
 
 ---
 
-## 5. Context Window Strategy (Desktop Viewport)
+## 5. Temporal Layer — Time as a First-Class Citizen
 
-### Three Access Tiers
+**Decision**: [ADR-008 Temporal Layer](plans/ADR-008-temporal-layer.md)
+
+Before the temporal layer, timestamps were passive metadata — written once, never queried. The graph had no time axis; the agent could not answer "what happened in what order?" without manually parsing every node's `created_at`.
+
+### 5.1 What Changed
+
+| Mechanism | Before | After |
+|-----------|--------|-------|
+| **Relation tracking** | `updated_at` was missing | `updated_at` on every relation, auto-set |
+| **Temporal indexes** | None | `(workspace_id, created_at)` and `(workspace_id, updated_at)` |
+| **Chronological walk** | Manual sort by agent | `temporal_walk()` — graph nodes sorted by `created_at` ASC |
+| **Session timeline** | Multiple `graph_get_node` calls | `session_timeline()` — flat event log, one call |
+| **Temporal vector search** | Impossible | `time_from` / `time_to` params → Qdrant `DatetimeRange` filter |
+| **Anchor** | 5 last focuses, no weight | Single deterministic `(last_focus_node_id, timestamp)` |
+
+### 5.2 New MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `temporal_walk` | Traverse graph along time axis (chronological order) |
+| `session_timeline` | Flat timeline of all events in a session |
+
+### 5.3 What It Solves
+
+1. **Anchor** — agent knows exactly where it stopped last time. `desktop_open` returns the deterministic entry point.
+2. **Sequence recall** — `temporal_walk("Show decisions leading to current architecture")` returns chronological chain.
+3. **Session overview** — `session_timeline("What happened in this session?")` returns one flat list.
+4. **Temporal pruning** — `vector_search(query, time_from="2026-05-14", time_to="2026-05-16")` returns only results from that window.
+
+### 5.4 Migration
+
+Backwards-compatible: `ALTER TABLE relations ADD COLUMN updated_at`. Old data works without changes.
+
+---
+
+## 6. Context Window Strategy (Desktop Viewport)
+
+### 6.1 Three Access Tiers
 
 | Tier | What | Size | When loaded | MCP response content |
 |------|------|------|-------------|----------------------|
@@ -335,7 +372,7 @@ def archive_stale_nodes(workspace_id: str, days_threshold: int = 7):
 
 ---
 
-## 6. Mutation Strategy
+## 7. Mutation Strategy
 
 ### Three Update Strategies
 
@@ -348,44 +385,38 @@ def archive_stale_nodes(workspace_id: str, days_threshold: int = 7):
 ### Vector Synchronization
 
 ```python
-def update_node(node_id: str, data: dict[str, Any]) -> Optional[Node]:
-    old_node = self.db.get_node(node_id)
-    if not old_node:
-        return None
+def update_node(node_id: str, new_data: dict):
+    with sqlite.transaction():
+        old_node = sqlite.get("SELECT * FROM nodes WHERE id = ?", node_id)
+        sqlite.update("""
+            UPDATE nodes
+            SET data = ?, updated_at = datetime('now')
+            WHERE id = ?
+        """, (json.dumps(new_data), node_id))
 
-    updated = self.db.update_node(node_id, data=data)
-    if not updated:
-        return None
-
-    # If text changed — re-index the vector
-    old_text = old_node.data.get("text", "")
-    new_text = data.get("text", old_text)
-    if old_text != new_text and new_text and self.vector.should_vectorize(old_node.type):
-        self.vector.remove_node_vector(node_id)
-        self.vector.index_node(
-            node_id=node_id,
-            text=new_text,
-            metadata={
-                "workspace_id": old_node.workspace_id,
-                "node_type": old_node.type.value,
-                "layer": self.vector.get_layer_for_type(old_node.type),
-                "status": "active",
-            },
-        )
-
-    return updated
+        # If text changed — re-index vector
+        if old_node.data.get("text") != new_data.get("text"):
+            text = new_data.get("text", "")
+            if text:
+                qdrant.delete(collection="cortex_memory",
+                              points_selector=Filter(must=[FieldCondition(
+                                  key="node_id", match=MatchValue(value=node_id))]))
+                qdrant.add(collection="cortex_memory",
+                           documents=[text],
+                           metadata=[{"node_id": node_id, "workspace_id": old_node.workspace_id}])
 ```
 
 ---
 
-## 7. MCP Protocol
+## 8. MCP Protocol
 
-### 7.1 Tools
+### 8.1 Tools
 
 #### Graph
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
+| `graph_init` | Create session root | `workspace_id: str` |
 | `graph_add_node` | Add a node | `parent_id: str, type: str, data: dict, workspace_id: str` |
 | `graph_get_node` | Get node with relations | `node_id: str, depth: int=2` |
 | `graph_add_relation` | Add a relation | `from_id: str, to_id: str, type: str, weight: float` |
@@ -396,6 +427,8 @@ def update_node(node_id: str, data: dict[str, Any]) -> Optional[Node]:
 | `graph_supersede` | Replace node (Strategy B: Supersedes) | `old_id: str, new_data: dict` |
 | `graph_delete_node` | Delete node and its vectors | `node_id: str, cascade: bool` |
 | `graph_search` | Hybrid: vector + subgraph expansion | `query: str, workspace_id: str` |
+| `graph_update_relation` | Update relation metadata/weight | `relation_id: str, data: dict, weight: float` |
+| `temporal_walk` | Chronological graph traversal | `from_time: str, to_time: str, relation_type: str, limit: int` |
 
 #### Vector
 
@@ -412,8 +445,9 @@ def update_node(node_id: str, data: dict[str, Any]) -> Optional[Node]:
 | `desktop_open` | Open workspace session, return Hot/Cold/Archive viewport | `workspace_id: str` |
 | `desktop_focus` | Focus on a node, expand its subgraph | `node_id: str, workspace_id: str` |
 | `desktop_history` | Navigation history | `workspace_id: str, limit: int=20` |
+| `session_timeline` | Flat timeline of all events in a session | `workspace_id: str, from_time: str, to_time: str, limit: int` |
 
-### 7.2 Resources
+### 8.2 Resources
 
 | URI | Description |
 |-----|-------------|
@@ -424,9 +458,9 @@ def update_node(node_id: str, data: dict[str, Any]) -> Optional[Node]:
 
 ---
 
-## 8. Usage Scenarios
+## 9. Usage Scenarios
 
-### 8.1 Starting a Session
+### 9.1 Starting a Session
 
 ```mermaid
 sequenceDiagram
@@ -444,7 +478,7 @@ sequenceDiagram
     end
 ```
 
-### 8.2 Regression Search
+### 9.2 Regression Search
 
 ```mermaid
 sequenceDiagram
@@ -464,7 +498,7 @@ sequenceDiagram
     FS-->>Roo: ...code...
 ```
 
-### 8.3 Mutation (Decision Change)
+### 9.3 Mutation (Decision Change)
 
 ```mermaid
 sequenceDiagram
@@ -485,9 +519,9 @@ sequenceDiagram
 
 ---
 
-## 9. Workspace Isolation
+## 10. Workspace Isolation
 
-### 9.1 Concept
+### 10.1 Concept
 
 Each project can have its own **workspace** — an isolated memory space. The workspace ID is set via the `--workspace` CLI argument:
 
@@ -495,7 +529,7 @@ Each project can have its own **workspace** — an isolated memory space. The wo
 python -m src.cortex --workspace mcp-roo-memory
 ```
 
-### 9.2 Resolution Chain
+### 10.2 Resolution Chain
 
 Workspace ID is resolved in this order ([`config.py:resolve_workspace_id()`](src/cortex/config.py)):
 
@@ -504,7 +538,7 @@ Workspace ID is resolved in this order ([`config.py:resolve_workspace_id()`](src
 3. **CWD basename** — only works in native mode (inside Docker CWD is always `/workspace`)
 4. **Fallback** `"default"`
 
-### 9.3 Write vs Search
+### 10.3 Write vs Search
 
 | Tool | Without `workspace_id` | With `workspace_id` |
 |------|----------------------|-------------------|
@@ -516,7 +550,7 @@ This is implemented via two helpers in [`server.py`](src/cortex/server.py):
 - **`_ws(args)`** — resolves workspace for WRITE tools (always returns a concrete ID)
 - **`_ws_opt(args)`** — resolves workspace for SEARCH tools (returns `None` if not explicitly provided, meaning "search everywhere")
 
-### 9.4 Per-Project Configuration
+### 10.4 Per-Project Configuration
 
 Each project that wants isolation adds its own `.roo/mcp.json`:
 
@@ -536,7 +570,7 @@ Each project that wants isolation adds its own `.roo/mcp.json`:
 
 This overrides the global MCP config **only for this project**. Projects without a local `.roo/mcp.json` share the default workspace.
 
-### 9.5 Storage
+### 10.5 Storage
 
 All workspaces share the same SQLite database and Qdrant collection — isolation is by `workspace_id` field:
 
@@ -556,7 +590,7 @@ payload = {
 
 ---
 
-## 10. ADR Index
+## 11. ADR Index
 
 | ADR | Decision |
 |-----|----------|
@@ -567,10 +601,11 @@ payload = {
 | [ADR-005](plans/ADR-005-desktop-viewport.md) | Desktop Viewport: Hot/Cold/Archive for context window control |
 | [ADR-006](plans/ADR-006-mutation-strategy.md) | Mutation strategy: Update/Supersedes/Stale-cascade |
 | [ADR-007](plans/ADR-007-regression-pattern.md) | Regression search pattern: meaning → context → specifics |
+| [ADR-008](plans/ADR-008-temporal-layer.md) | Temporal layer: time as first-class citizen, chronological walks, session timelines |
 
 ---
 
-## 11. Conclusion
+## 12. Conclusion
 
 **MCP Roo Memory** is not just another vector store.
 It is a **fractal graph memory** where:
@@ -581,6 +616,7 @@ It is a **fractal graph memory** where:
 - **Navigation** — reasoning chain preserved as a graph path
 - **Viewport** — lazy loading with Hot/Cold/Archive for context window control
 - **Mutation** — Update/Supersedes/Stale-cascade for knowledge evolution
+- **Temporal** — time as a first-class citizen: chronological walks, session timelines, temporal vector filters
 
 All of this works as an MCP server for Roo Code, using existing
 tools (Qdrant) and adding the missing graph structure.

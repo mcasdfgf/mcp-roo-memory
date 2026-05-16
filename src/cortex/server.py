@@ -267,6 +267,40 @@ class CortexServer:
                         "required": ["node_id"],
                     },
                 ),
+                # ── Temporal ──
+                types.Tool(
+                    name="temporal_walk",
+                    description="Walk the graph along the time axis. "
+                                "Returns nodes ordered by created_at ASC within optional time range. "
+                                "Use to reconstruct the chronological sequence of decisions and events.\n\n"
+                                "workspace_id is OPTIONAL.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "workspace_id": {"type": "string", "description": "Optional. Falls back to env/CWD folder name / 'default'"},
+                            "from_time": {"type": "string", "description": "ISO 8601 start time (optional)"},
+                            "to_time": {"type": "string", "description": "ISO 8601 end time (optional)"},
+                            "relation_type": {"type": "string", "description": "Filter by node type / relation type (optional)"},
+                            "limit": {"type": "integer", "default": 50},
+                        },
+                    },
+                ),
+                types.Tool(
+                    name="session_timeline",
+                    description="Show a flat timeline of the session: nodes created + navigation events. "
+                                "All merged and sorted by created_at ASC. "
+                                "Use to answer 'what happened in this session over time?'.\n\n"
+                                "workspace_id is OPTIONAL.",
+                    inputSchema={
+                        "type": "object",
+                        "properties": {
+                            "workspace_id": {"type": "string", "description": "Optional. Falls back to env/CWD folder name / 'default'"},
+                            "from_time": {"type": "string", "description": "ISO 8601 start time (optional)"},
+                            "to_time": {"type": "string", "description": "ISO 8601 end time (optional)"},
+                            "limit": {"type": "integer", "default": 50},
+                        },
+                    },
+                ),
                 # ── Vector (Semantic Search) ──
                 types.Tool(
                     name="vector_search",
@@ -283,6 +317,8 @@ class CortexServer:
                             "query": {"type": "string", "description": "Natural language search query"},
                             "workspace_id": {"type": "string", "description": "Optional. Omit to search ALL projects (cross-project). Set to narrow to one project."},
                             "top_k": {"type": "integer", "default": 10},
+                            "time_from": {"type": "string", "description": "ISO 8601 start time filter (optional)"},
+                            "time_to": {"type": "string", "description": "ISO 8601 end time filter (optional)"},
                         },
                         "required": ["query"],
                     },
@@ -433,12 +469,31 @@ class CortexServer:
             )
             result = {"deleted": deleted}
 
+        elif name == "temporal_walk":
+            result = self.cortex.graph.temporal_walk(
+                workspace_id=self._ws(args),
+                from_time=args.get("from_time"),
+                to_time=args.get("to_time"),
+                relation_type=args.get("relation_type"),
+                limit=args.get("limit", 50),
+            )
+
+        elif name == "session_timeline":
+            result = self.cortex.desktop.timeline(
+                workspace_id=self._ws(args),
+                from_time=args.get("from_time"),
+                to_time=args.get("to_time"),
+                limit=args.get("limit", 50),
+            )
+
         elif name == "vector_search":
             # ws_opt=None → cross-project search (all workspaces)
             result = self.cortex.vector.search(
                 query=args["query"],
                 workspace_id=ws_opt,
                 top_k=args.get("top_k", 10),
+                time_from=args.get("time_from"),
+                time_to=args.get("time_to"),
             )
 
         elif name == "vector_store":

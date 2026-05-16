@@ -218,6 +218,44 @@ class TestVectorManagerEdgeCases:
         results = vector_manager.search("anything")
         assert results == []
 
+    def test_search_with_time_filter(self, vector_manager: VectorManager):
+        """Vector search with time_from/time_to filter."""
+        vector_manager.index_node(
+            node_id="old-node",
+            text="Old fact",
+            metadata={
+                "workspace_id": "ws1", "node_type": "fact", "layer": "fact",
+                "tags": [], "status": "active", "created_at": "2026-05-14T00:00:00Z",
+            },
+        )
+        vector_manager.index_node(
+            node_id="new-node",
+            text="New fact",
+            metadata={
+                "workspace_id": "ws1", "node_type": "fact", "layer": "fact",
+                "tags": [], "status": "active", "created_at": "2026-05-16T00:00:00Z",
+            },
+        )
+
+        # Search with time filter — only old
+        old_results = vector_manager.search(
+            "fact", workspace_id="ws1",
+            time_from="2026-05-13T00:00:00Z", time_to="2026-05-15T00:00:00Z",
+        )
+        assert len(old_results) >= 1
+        # Should not include new-node
+        new_ids = [r["node_id"] for r in old_results]
+        assert "new-node" not in new_ids
+
+        # Search with time filter — only new
+        new_results = vector_manager.search(
+            "fact", workspace_id="ws1",
+            time_from="2026-05-15T00:00:00Z",
+        )
+        assert len(new_results) >= 1
+        new_ids = [r["node_id"] for r in new_results]
+        assert "old-node" not in new_ids
+
     def test_collection_status_not_ready(self, vector_manager: VectorManager):
         """is_ready returns False when collection doesn't exist."""
         # Our mock returns "green" status by default

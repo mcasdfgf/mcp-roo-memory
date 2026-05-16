@@ -286,3 +286,48 @@ class TestGraphManagerEdgeCases:
         s1 = graph_manager.init_session("ws1")
         s2 = graph_manager.init_session("ws1")
         assert s1.id == s2.id
+
+
+class TestGraphManagerTemporal:
+    """Temporal walk operations."""
+
+    def test_temporal_walk(self, graph_manager: GraphManager):
+        # Create nodes with explicit timestamps in reverse order
+        now = "2026-05-16T12:00:00Z"
+        earlier = "2026-05-16T10:00:00Z"
+        n1 = graph_manager.add_node(
+            parent_id=None, node_type=NodeType.THOUGHT,
+            data={"title": "First thought"}, workspace_id="ws1",
+        )
+        # Force earlier timestamp via DB
+        graph_manager.db.execute_write(
+            "UPDATE nodes SET created_at = ? WHERE id = ?",
+            (earlier, n1.id),
+        )
+        n2 = graph_manager.add_node(
+            parent_id=None, node_type=NodeType.DECISION,
+            data={"title": "Second decision"}, workspace_id="ws1",
+        )
+        graph_manager.db.execute_write(
+            "UPDATE nodes SET created_at = ? WHERE id = ?",
+            (now, n2.id),
+        )
+
+        results = graph_manager.temporal_walk("ws1")
+        assert len(results) >= 2
+        # Should be in chronological order ASC
+        assert results[0]["created_at"] <= results[1]["created_at"]
+
+    def test_temporal_walk_with_type_filter(self, graph_manager: GraphManager):
+        graph_manager.add_node(
+            parent_id=None, node_type=NodeType.THOUGHT,
+            data={"title": "A thought"}, workspace_id="ws1",
+        )
+        graph_manager.add_node(
+            parent_id=None, node_type=NodeType.DECISION,
+            data={"title": "A decision"}, workspace_id="ws1",
+        )
+
+        decisions = graph_manager.temporal_walk("ws1", relation_type="decision")
+        assert len(decisions) == 1  # only the DECISION node
+        assert decisions[0]["type"] == "decision"

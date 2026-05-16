@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.0] - 2026-05-16
+
+### Added
+
+- **Temporal Layer** — time as a first-class citizen in the graph. [ADR-008](plans/ADR-008-temporal-layer.md)
+- **`temporal_walk`** — new MCP tool: chronological graph traversal, returns nodes sorted by `created_at` ASC within optional time range ([`graph.py`](src/cortex/graph.py))
+- **`session_timeline`** — new MCP tool: flat timeline of all events (nodes + navigation) in a session ([`desktop.py`](src/cortex/desktop.py))
+- **`graph_update_relation`** — new MCP tool: update relation metadata/weight with auto `updated_at` ([`db.py`](src/cortex/db.py))
+- **Temporal vector search** — `vector_search()` now accepts `time_from` / `time_to` parameters, filters via Qdrant `DatetimeRange` ([`vector.py`](src/cortex/vector.py))
+- **`updated_at` on Relations** — `Relation` model now includes `updated_at` field, auto-set on create and update ([`models.py`](src/cortex/models.py))
+- **Deterministic anchor** — `desktop_open` uses `last_focus` + timestamp as deterministic entry point ([`desktop.py`](src/cortex/desktop.py))
+- **Temporal indexes** — SQLite indexes on `nodes(workspace_id, created_at)`, `nodes(workspace_id, updated_at)`, `navigation_history(workspace_id, created_at)` ([`db.py`](src/cortex/db.py))
+- **`time_range_query()`** — SQLite helper for time-sliced node queries ([`db.py`](src/cortex/db.py))
+
+### Changed
+
+- **README.md** — added temporal tools to overview table, ADR-008 to deep dive
+- **CONCEPT.md** — new §5 Temporal Layer, ADR-008 in index, updated MCP Protocol table (18 tools), updated Conclusion
+- **Migration**: `ALTER TABLE relations ADD COLUMN updated_at` — backwards-compatible
+
+### Fixed
+
+- Migration logic in `db.py._migrate_v1_temporal()` — adds `updated_at` column to relations if missing, populates from `created_at`
+
 ## [0.1.1] - 2026-05-13
 
 ### Added
