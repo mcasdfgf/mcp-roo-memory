@@ -412,30 +412,34 @@ def update_node(node_id: str, new_data: dict):
 
 ### 8.1 Tools
 
+#### Temporal
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `temporal_walk` | Chronological graph traversal | `workspace_id: str, from_time: str, to_time: str, relation_type: str, limit: int=50` |
+| `session_timeline` | Flat timeline of all events in a session | `workspace_id: str, from_time: str, to_time: str, limit: int=50` |
+
 #### Graph
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `graph_init` | Create session root | `workspace_id: str` |
 | `graph_add_node` | Add a node | `parent_id: str, type: str, data: dict, workspace_id: str` |
 | `graph_get_node` | Get node with relations | `node_id: str, depth: int=2` |
 | `graph_add_relation` | Add a relation | `from_id: str, to_id: str, type: str, weight: float` |
 | `graph_traverse` | Traverse graph from node | `start_id: str, relation: str, depth: int=3` |
-| `graph_walk` | Walk along a reasoning chain | `start_id: str, steps: int=5` |
+| `graph_walk` | Walk along reasoning chain | `start_id: str, steps: int=5` |
 | `graph_decompose` | Decompose a task | `task_id: str, subtasks: list[dict]` |
 | `graph_update_node` | Update node (Strategy A: Update) | `node_id: str, data: dict` |
 | `graph_supersede` | Replace node (Strategy B: Supersedes) | `old_id: str, new_data: dict` |
 | `graph_delete_node` | Delete node and its vectors | `node_id: str, cascade: bool` |
 | `graph_search` | Hybrid: vector + subgraph expansion | `query: str, workspace_id: str` |
-| `graph_update_relation` | Update relation metadata/weight | `relation_id: str, data: dict, weight: float` |
-| `temporal_walk` | Chronological graph traversal | `from_time: str, to_time: str, relation_type: str, limit: int` |
 
 #### Vector
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
 | `vector_store` | Store text with automatic vectorization | `text: str, metadata: dict` |
-| `vector_search` | Semantic search (meaning-based) | `query: str, top_k: int=10, workspace_id: str` |
+| `vector_search` | Semantic search (meaning-based) | `query: str, top_k: int=10, workspace_id: str, time_from: str, time_to: str` |
 | *(no separate `vector_hybrid_search` — use `graph_search` instead)* | | |
 
 #### Desktop
@@ -445,7 +449,6 @@ def update_node(node_id: str, new_data: dict):
 | `desktop_open` | Open workspace session, return Hot/Cold/Archive viewport | `workspace_id: str` |
 | `desktop_focus` | Focus on a node, expand its subgraph | `node_id: str, workspace_id: str` |
 | `desktop_history` | Navigation history | `workspace_id: str, limit: int=20` |
-| `session_timeline` | Flat timeline of all events in a session | `workspace_id: str, from_time: str, to_time: str, limit: int` |
 
 ### 8.2 Resources
 

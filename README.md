@@ -88,7 +88,8 @@ Then edit `.roo/mcp.json` in your project and add `--workspace your-project-name
                        "graph_add_relation", "graph_search", "desktop_focus",
                        "desktop_history", "graph_traverse", "graph_walk",
                        "graph_decompose", "graph_update_node", "graph_supersede",
-                       "graph_delete_node", "vector_store"]
+                       "graph_delete_node", "vector_store",
+                       "temporal_walk", "session_timeline"]
     }
   }
 }
